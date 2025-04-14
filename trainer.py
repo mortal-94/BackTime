@@ -27,7 +27,8 @@ class Trainer:
     3. test: train a new forecasting from scratch on the poisoned data
     """
 
-    def __init__(self, config, atk_vars, target_pattern, train_mean, train_std, train_data, test_data, device):
+    def __init__(self, config, atk_vars, target_pattern, train_mean, train_std,
+                 train_data, test_data, train_data_stamps, test_data_stamps, device):
         self.config = config
         self.mean = train_mean
         self.std = train_std
@@ -40,7 +41,10 @@ class Trainer:
         self.num_epochs = config.num_epochs
         self.warmup = config.warmup
 
-        train_set = TimeDataset(train_data, train_mean, train_std, device, num_for_hist=12, num_for_futr=12, timestamps=None)
+        self.train_data_stamps = train_data_stamps
+        self.test_data_stamps = test_data_stamps
+
+        train_set = TimeDataset(train_data, train_mean, train_std, device, num_for_hist=12, num_for_futr=12, timestamps=train_data_stamps)
         channel_features = fft_compress(train_data, 200)
         self.attacker = Attacker(train_set, channel_features, atk_vars, config, target_pattern, device)
         self.use_timestamps = config.Dataset.use_timestamps
@@ -57,9 +61,9 @@ class Trainer:
     def prepare_data(self):
         self.train_set = self.attacker.dataset
         self.cln_test_set = TimeDataset(self.test_data, self.mean, self.std, self.device, num_for_hist=12,
-                                           num_for_futr=12, timestamps=None)
+                                           num_for_futr=12, timestamps=self.test_data_stamps)
         self.atk_test_set = AttackEvaluateSet(self.attacker, self.test_data, self.mean, self.std, self.device,
-                                              num_for_hist=12, num_for_futr=12, timestamps=None)
+                                              num_for_hist=12, num_for_futr=12, timestamps=self.test_data_stamps)
 
         self.train_loader = DataLoader(self.train_set, batch_size=self.batch_size, shuffle=True)
         self.cln_test_loader = DataLoader(self.cln_test_set, batch_size=self.batch_size, shuffle=False)
@@ -94,6 +98,7 @@ class Trainer:
                 labels = torch.squeeze(labels).to(self.device).permute(0, 2, 1)
 
                 self.optimizer.zero_grad()
+
                 x_des = torch.zeros_like(labels)
                 outputs = self.net(encoder_inputs, x_mark, x_des, None)
                 outputs = self.train_set.denormalize(outputs)
@@ -106,7 +111,7 @@ class Trainer:
                 self.optimizer.step()
 
             if epoch > self.warmup:
-                self.attacker.update_trigger_generator(self.net, epoch, self.num_epochs)
+                self.attacker.update_trigger_generator(self.net, epoch, self.num_epochs, use_timestamps=self.use_timestamps)
 
             self.validate(self.net, epoch, self.warmup)
 
@@ -194,6 +199,7 @@ class Trainer:
                 labels = torch.squeeze(labels).to(self.device).permute(0, 2, 1)
 
                 optimizer.zero_grad()
+
                 x_des = torch.zeros_like(labels)
                 outputs = model(encoder_inputs, x_mark, x_des, None)
                 outputs = self.train_set.denormalize(outputs)
