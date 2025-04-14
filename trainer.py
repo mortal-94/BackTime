@@ -87,15 +87,13 @@ class Trainer:
             for batch_index, batch_data in enumerate(pbar):
                 if not self.use_timestamps:
                     encoder_inputs, labels, clean_labels, idx = batch_data
+                    x_mark = torch.zeros(encoder_inputs.shape[0], encoder_inputs.shape[-1], 4).to(self.device)
                 else:
                     encoder_inputs, labels, clean_labels, x_mark, y_mark, idx = batch_data
                 encoder_inputs = torch.squeeze(encoder_inputs).to(self.device).permute(0, 2, 1)
                 labels = torch.squeeze(labels).to(self.device).permute(0, 2, 1)
 
                 self.optimizer.zero_grad()
-
-                if not self.use_timestamps:
-                    x_mark = torch.zeros(encoder_inputs.shape[0], encoder_inputs.shape[1], 4).to(self.device)
                 x_des = torch.zeros_like(labels)
                 outputs = self.net(encoder_inputs, x_mark, x_des, None)
                 outputs = self.train_set.denormalize(outputs)
@@ -126,13 +124,12 @@ class Trainer:
                 # calculate the clean performance
                 if not self.use_timestamps:
                     encoder_inputs, labels, clean_labels, idx = batch_data
+                    x_mark = torch.zeros(encoder_inputs.shape[0], encoder_inputs.shape[-1], 4).to(self.device)
                 else:
                     encoder_inputs, labels, clean_labels, x_mark, y_mark, idx = batch_data
                 encoder_inputs = torch.squeeze(encoder_inputs).to(self.device).permute(0, 2, 1)
                 labels = torch.squeeze(labels).to(self.device).permute(0, 2, 1)
 
-                if not self.use_timestamps:
-                    x_mark = torch.zeros(encoder_inputs.shape[0], encoder_inputs.shape[1], 4).to(self.device)
                 x_des = torch.zeros_like(labels)
                 outputs = model(encoder_inputs, x_mark, x_des, None)
                 outputs = self.cln_test_set.denormalize(outputs)
@@ -149,12 +146,14 @@ class Trainer:
             if epoch > atk_eval_epoch:
                 for batch_index, batch_data in enumerate(self.atk_test_loader):
                     # calculate the attacked performance
-                    encoder_inputs, labels, clean_labels, idx = batch_data
+                    if not self.use_timestamps:
+                        encoder_inputs, labels, clean_labels, idx = batch_data
+                        x_mark = torch.zeros(encoder_inputs.shape[0], encoder_inputs.shape[-1], 4).to(self.device)
+                    else:
+                        encoder_inputs, labels, clean_labels, x_mark, y_mark, idx = batch_data
                     encoder_inputs = torch.squeeze(encoder_inputs).to(self.device).permute(0, 2, 1)
                     labels = torch.squeeze(labels).to(self.device).permute(0, 2, 1)
 
-                    if not self.use_timestamps:
-                        x_mark = torch.zeros(encoder_inputs.shape[0], encoder_inputs.shape[1], 4).to(self.device)
                     x_des = torch.zeros_like(labels)
                     outputs = model(encoder_inputs, x_mark, x_des, None)
                     outputs = self.atk_test_set.denormalize(outputs)
@@ -188,15 +187,13 @@ class Trainer:
             for batch_index, batch_data in enumerate(pbar):
                 if not self.use_timestamps:
                     encoder_inputs, labels, clean_labels, idx = batch_data
+                    x_mark = torch.zeros(encoder_inputs.shape[0], encoder_inputs.shape[-1], 4).to(self.device)
                 else:
                     encoder_inputs, labels, clean_labels, x_mark, y_mark, idx = batch_data
                 encoder_inputs = torch.squeeze(encoder_inputs).to(self.device).permute(0, 2, 1)
                 labels = torch.squeeze(labels).to(self.device).permute(0, 2, 1)
 
                 optimizer.zero_grad()
-
-                if not self.use_timestamps:
-                    x_mark = torch.zeros(encoder_inputs.shape[0], encoder_inputs.shape[1], 4).to(self.device)
                 x_des = torch.zeros_like(labels)
                 outputs = model(encoder_inputs, x_mark, x_des, None)
                 outputs = self.train_set.denormalize(outputs)
