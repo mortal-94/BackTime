@@ -34,6 +34,7 @@ class TgrGCN(nn.Module):
         self.hidden_dim = config.hidden_dim
         self.output_dim = config.trigger_len
         self.init_bound = config.epsilon
+        self.atk_vars = atk_vars
 
         self.constant_MLP = nn.Sequential(
             nn.Linear(self.input_dim, self.hidden_dim),
@@ -70,7 +71,7 @@ class TgrGCN(nn.Module):
         n = self.sim_feats.shape[0]
         assert x.shape[0] % n == 0, 'the batch graph size should be a multiple of the number of variables.'
         x = x.view(-1, n, self.input_dim)
-        bias = self.constant_MLP(torch.zeros(x.shape[-2], x.shape[-1]).to(self.device))
+        bias = self.constant_MLP(torch.zeros(self.atk_vars.shape[0], x.shape[-1]).to(self.device))
         bias = torch.tanh(bias) * self.init_bound * constant_alpha
 
         A = self.cal_structure()
@@ -80,11 +81,12 @@ class TgrGCN(nn.Module):
         A = A.to(self.device)
         h = self.conv1(x, A)
         h = F.relu(h)
+        A = A[self.atk_vars][:]
         perturb = self.conv2(h, A)
 
         perturb = torch.tanh(perturb) * self.init_bound * (1 - constant_alpha)
         # add trigger on x[-1] (last element in history) to ensure the real-time property
-        out = perturb + bias + x[..., -1:]
+        out = perturb + bias + x[...,self.atk_vars, -1:]
         return out, perturb + bias
 
     def cal_structure(self):
