@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from dataset import TimeDataset, AttackEvaluateSet
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from attack import Attacker, fft_compress
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from forecast_models import TimesNet, Autoformer, FEDformer
@@ -54,7 +55,7 @@ class Trainer:
         self.prepare_data()
 
         self.logs = []
-
+        self.writer = None
     def load_attacker(self, attacker_state):
         self.attacker.load_state_dict(attacker_state)
 
@@ -75,6 +76,8 @@ class Trainer:
                                           collate_fn=self.atk_test_set.collate_fn)
 
     def train(self):
+        self.logs = []
+        self.writer = SummaryWriter(log_dir=f'./logs/{self.config.dataset}/train')
         self.attacker.train()
         poison_metrics = []
         for epoch in range(self.num_epochs):
@@ -150,13 +153,22 @@ class Trainer:
             cln_mae = mean_absolute_error(cln_targets.reshape(-1, 1), cln_preds.reshape(-1, 1))
             cln_rmse = mean_squared_error(cln_targets.reshape(-1, 1), cln_preds.reshape(-1, 1)) ** 0.5
 
-            cln_mae_attV = mean_absolute_error(cln_targets[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1),
-                                               cln_preds[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1))
-            cln_rmse_attV = mean_squared_error(cln_targets[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1),
-                                               cln_preds[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1)) ** 0.5
+            cln_mae_attV = mean_absolute_error(cln_targets[:, :self.attacker.pattern_len, self.attacker.atk_vars.cpu().detach().numpy()].reshape(-1, 1),
+                                               cln_preds[:, :self.attacker.pattern_len, self.attacker.atk_vars.cpu().detach().numpy()].reshape(-1, 1))
+            cln_rmse_attV = mean_squared_error(cln_targets[:, :self.attacker.pattern_len, self.attacker.atk_vars.cpu().detach().numpy()].reshape(-1, 1),
+                                               cln_preds[:, :self.attacker.pattern_len, self.attacker.atk_vars.cpu().detach().numpy()].reshape(-1, 1)) ** 0.5
 
-            cln_info = f' | clean MAE: {cln_mae}, clean RMSE: {cln_rmse}, \n' \
+            cln_info = f'clean MAE: {cln_mae}, clean RMSE: {cln_rmse}, \n' \
                           f'clean MAE (att_vars in pat_len): {cln_mae_attV}, clean RMSE (att_vars in pat_len): {cln_rmse_attV}'
+            self.writer.add_scalar('MAE/clean', cln_mae, epoch)
+            self.writer.add_scalar('RMSE/clean', cln_rmse, epoch)
+            self.writer.add_scalar('MAE/clean (attacked vars in pattern len)', cln_mae_attV, epoch)
+            self.writer.add_scalar('RMSE/clean (attacked vars in pattern len)', cln_rmse_attV, epoch)
+            log1 = {"Epoch": epoch, "Tag": "Clean", "MAE": cln_mae, "RMSE": cln_rmse,
+                    "MAE (attacked vars in pattern len)": cln_mae_attV,
+                    "RMSE (attacked vars in pattern len)": cln_rmse_attV
+                    }
+            self.logs.append(log1)
 
             if epoch > atk_eval_epoch:
                 for batch_index, batch_data in enumerate(self.atk_test_loader):
@@ -183,30 +195,31 @@ class Trainer:
                 atk_mae = mean_absolute_error(atk_targets.reshape(-1, 1), atk_preds.reshape(-1, 1))
                 atk_rmse = mean_squared_error(atk_targets.reshape(-1, 1), atk_preds.reshape(-1, 1)) ** 0.5
                 atk_mae_attV = mean_absolute_error(
-                    atk_targets[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1),
-                    atk_preds[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1))
+                    atk_targets[:, :self.attacker.pattern_len, self.attacker.atk_vars.cpu().detach().numpy()].reshape(-1, 1),
+                    atk_preds[:, :self.attacker.pattern_len, self.attacker.atk_vars.cpu().detach().numpy()].reshape(-1, 1))
                 atk_rmse_attV = mean_squared_error(
-                    atk_targets[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1),
-                    atk_preds[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1)) ** 0.5
+                    atk_targets[:, :self.attacker.pattern_len, self.attacker.atk_vars.cpu().detach().numpy()].reshape(-1, 1),
+                    atk_preds[:, :self.attacker.pattern_len, self.attacker.atk_vars.cpu().detach().numpy()].reshape(-1, 1)) ** 0.5
 
-                atk_info = f' | attacked MAE: {atk_mae}, attacked RMSE: {atk_rmse}, \n' \
+                atk_info = f'attacked MAE: {atk_mae}, attacked RMSE: {atk_rmse}, \n' \
                             f'attacked MAE (att_vars in pat_len): {atk_mae_attV}, attacked RMSE (att_vars in pat_len): {atk_rmse_attV}'
 
-        log1 = {"Epoch": epoch, "Tag": "Clean", "MAE": cln_mae, "RMSE": cln_rmse,
-                "MAE (attacked vars in pattern len)": cln_mae_attV,
-                "RMSE (attacked vars in pattern len)": cln_rmse_attV
-        }
-        log2 = {"Epoch": epoch, "Tag": "Attacked", "MAE": atk_mae, "RMSE": atk_rmse,
-                "MAE (attacked vars in pattern len)": atk_mae_attV,
-                "RMSE (attacked vars in pattern len)": atk_rmse_attV
-        }
-        self.logs.append(log1)
-        self.logs.append(log2)
+                self.writer.add_scalar('MAE/attacked', atk_mae, epoch)
+                self.writer.add_scalar('RMSE/attacked', atk_rmse, epoch)
+                self.writer.add_scalar('MAE/attacked (attacked vars in pattern len)', atk_mae_attV, epoch)
+                self.writer.add_scalar('RMSE/attacked (attacked vars in pattern len)', atk_rmse_attV, epoch)
+                log2 = {"Epoch": epoch, "Tag": "Attacked", "MAE": atk_mae, "RMSE": atk_rmse,
+                        "MAE (attacked vars in pattern len)": atk_mae_attV,
+                        "RMSE (attacked vars in pattern len)": atk_rmse_attV
+                }
+                self.logs.append(log2)
 
         info = 'Epoch: {}'.format(epoch) + '\n' + cln_info + '\n' + atk_info
         print(info)
 
     def test(self):
+        self.logs = []
+        self.writer = SummaryWriter(log_dir=f'./logs/{self.config.dataset}/test')
         self.attacker.eval()
         # train a new model on the poisoned data from scratch
         model = MODEL_MAP[self.config.model_name](self.config.Model).to(self.device)

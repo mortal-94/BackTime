@@ -189,7 +189,7 @@ class Attacker:
         data_bef_trigger = self.dataset.normalize(data_bef_trigger)
         data_bef_trigger = data_bef_trigger.view(-1, self.trigger_generator.input_dim)
         triggers, perturbations = self.trigger_generator(data_bef_trigger)
-        triggers = self.dataset.denormalize(triggers).reshape(-1, c, self.trigger_len)
+        triggers = self.dataset.denormalize(triggers).reshape(-1, self.atk_vars.shape[0], self.trigger_len)
         return triggers, perturbations
 
     def get_trigger_slices(self, bef_len, aft_len):
@@ -252,13 +252,13 @@ class Attacker:
                                                  self.trigger_len + self.pattern_len + self.fct_output_len)
         else:
             tgr_slices, tgr_timestamps = self.get_trigger_slices(self.fct_input_len - self.trigger_len,
-                                                             self.trigger_len + self.pattern_len + self.fct_output_len)
+                                                                 self.trigger_len + self.pattern_len + self.fct_output_len)
         pbar = tqdm.tqdm(tgr_slices, desc=f'Attacking data {epoch}/{epochs}')
         for slice_id, slice in enumerate(pbar):
             slice = slice.to(self.device)
             slice = slice[:, 0:1, :]
             n, c, l = slice.shape
-            data_bef = slice[self.atk_vars, :,
+            data_bef = slice[:, :,
                        self.fct_input_len - self.trigger_len - self.bef_tgr_len:self.fct_input_len - self.trigger_len]
             data_bef = data_bef.reshape(-1, self.bef_tgr_len)
 
