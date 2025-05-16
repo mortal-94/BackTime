@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import tqdm
-from dgl.nn.pytorch import GraphConv
-import dgl
+# from dgl.nn.pytorch import GraphConv
+# import dgl
 
 
 class GraphConvolutionLayer(nn.Module):
@@ -48,8 +48,9 @@ class TgrGCN(nn.Module):
 
         self.conv1 = GraphConvolutionLayer(self.input_dim, self.hidden_dim)
         self.conv2 = GraphConvolutionLayer(self.hidden_dim, self.output_dim)
-
-        self.sim_feats = torch.from_numpy(sim_feats).float().to(device)[atk_vars]  # (n, c)
+        # bef_tgr是全特征后，生成器考虑特征相关生成atk_vars的trigger
+        # self.sim_feats = torch.from_numpy(sim_feats).float().to(device)[atk_vars]  # (n, c)
+        self.sim_feats = torch.from_numpy(sim_feats).float().to(device)  # (n, c)
 
         self.device = device
         self.layer_num = 2

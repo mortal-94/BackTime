@@ -1,9 +1,7 @@
-dgl==2.2.1+cu121
 easydict==1.13
 einops==0.8.0
 numpy==1.24.3
 pandas==1.5.3
-PyYAML==6.0.1
 PyYAML==6.0.2
 reformer_pytorch==1.4.4
 scikit_learn==1.2.2

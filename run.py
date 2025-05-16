@@ -49,7 +49,9 @@ def main(config):
     gpuid = config.gpuid
     os.environ["CUDA_VISIBLE_DEVICES"] = gpuid
     USE_CUDA = torch.cuda.is_available()
-    DEVICE = torch.device('cuda:0')
+    DEVICE = torch.device('cpu')
+    if USE_CUDA:
+        DEVICE = torch.device('cuda:0')
     print("CUDA:", USE_CUDA, DEVICE)
 
     seed_torch()
@@ -78,7 +80,7 @@ def main(config):
 
     save_file = f'./checkpoints/attacker_{config.dataset}.pth'
     if os.path.exists(save_file):
-        state = torch.load(save_file)
+        state = torch.load(save_file, map_location=DEVICE)
         exp_trainer.load_attacker(state)
         print('load attacker from', save_file)
     else:

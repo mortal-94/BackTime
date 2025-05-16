@@ -166,7 +166,7 @@ class Attacker:
         pattern_len = self.target_pattern.shape[-1]
 
         for beg_idx in self.atk_ts.tolist():
-            data_bef_tgr = self.dataset.data[self.atk_vars, 0:1, beg_idx - self.trigger_generator.input_dim:beg_idx]
+            data_bef_tgr = self.dataset.data[:, 0:1, beg_idx - self.trigger_generator.input_dim:beg_idx]    # bef_tgr 考虑全特征
             data_bef_tgr = self.dataset.normalize(data_bef_tgr)
             data_bef_tgr = data_bef_tgr.reshape(-1, self.trigger_generator.input_dim)
 
@@ -214,6 +214,7 @@ class Attacker:
     def select_atk_timestamp(self, poison_metrics):
         """
         select the attack timestamp using the poison metrics (clean MAE). poison_metrics: a list of [mae, idx]
+        。。。有误，实际这个函数运行时接受的参数不是 poison的，而是正常数据集的。
         """
         select_pos_mark = torch.zeros(len(self.dataset), dtype=torch.int)
         poison_metrics = torch.cat(poison_metrics, dim=0).to(self.device)

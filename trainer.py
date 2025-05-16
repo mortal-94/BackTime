@@ -1,3 +1,5 @@
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -44,12 +46,14 @@ class Trainer:
         self.train_data_stamps = train_data_stamps
         self.test_data_stamps = test_data_stamps
 
-        train_set = TimeDataset(train_data, train_mean, train_std, device, num_for_hist=12, num_for_futr=12, timestamps=train_data_stamps)
+        train_set = TimeDataset(train_data, train_mean, train_std, device, num_for_hist=12, num_for_futr=12, timestamps=train_data_stamps)  # 前12，后12写死在这里了
         channel_features = fft_compress(train_data, 200)
         self.attacker = Attacker(train_set, channel_features, atk_vars, config, target_pattern, device)
         self.use_timestamps = config.Dataset.use_timestamps
 
         self.prepare_data()
+
+        self.logs = []
 
     def load_attacker(self, attacker_state):
         self.attacker.load_state_dict(attacker_state)
@@ -59,7 +63,7 @@ class Trainer:
         return attacker_state
 
     def prepare_data(self):
-        self.train_set = self.attacker.dataset
+        self.train_set = self.attacker.dataset      # 注意这里共享内存了
         self.cln_test_set = TimeDataset(self.test_data, self.mean, self.std, self.device, num_for_hist=12,
                                            num_for_futr=12, timestamps=self.test_data_stamps)
         self.atk_test_set = AttackEvaluateSet(self.attacker, self.test_data, self.mean, self.std, self.device,
@@ -81,11 +85,11 @@ class Trainer:
                     # select the attacked timestamps
                     self.attacker.select_atk_timestamp(poison_metrics)
                 # attacker poison the training data
-                self.attacker.sparse_inject()
+                self.attacker.sparse_inject()       # 热身阶段没有投毒啊
 
             poison_metrics = []
 
-            self.train_loader = DataLoader(self.train_set, batch_size=self.batch_size, shuffle=True)
+            self.train_loader = DataLoader(self.train_set, batch_size=self.batch_size, shuffle=True)    # 这里的self.train_set共享着attacker的dataset
             pbar = tqdm.tqdm(self.train_loader, desc=f'Training data {epoch}/{self.num_epochs}')
 
             for batch_index, batch_data in enumerate(pbar):
@@ -115,7 +119,7 @@ class Trainer:
 
             self.validate(self.net, epoch, self.warmup)
 
-    def validate(self, model, epoch, atk_eval_epoch=0):
+    def validate(self, model, epoch, atk_eval_epoch=-1):
         model.eval()
         self.attacker.eval()
         cln_info = atk_info = ''
@@ -146,7 +150,13 @@ class Trainer:
             cln_mae = mean_absolute_error(cln_targets.reshape(-1, 1), cln_preds.reshape(-1, 1))
             cln_rmse = mean_squared_error(cln_targets.reshape(-1, 1), cln_preds.reshape(-1, 1)) ** 0.5
 
-            cln_info = f' | clean MAE: {cln_mae}, clean RMSE: {cln_rmse}'
+            cln_mae_attV = mean_absolute_error(cln_targets[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1),
+                                               cln_preds[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1))
+            cln_rmse_attV = mean_squared_error(cln_targets[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1),
+                                               cln_preds[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1)) ** 0.5
+
+            cln_info = f' | clean MAE: {cln_mae}, clean RMSE: {cln_rmse}, \n' \
+                          f'clean MAE (att_vars in pat_len): {cln_mae_attV}, clean RMSE (att_vars in pat_len): {cln_rmse_attV}'
 
             if epoch > atk_eval_epoch:
                 for batch_index, batch_data in enumerate(self.atk_test_loader):
@@ -163,8 +173,8 @@ class Trainer:
                     outputs = model(encoder_inputs, x_mark, x_des, None)
                     outputs = self.atk_test_set.denormalize(outputs)
 
-                    labels = labels[:, :self.attacker.pattern_len, self.attacker.atk_vars]
-                    outputs = outputs[:, :self.attacker.pattern_len, self.attacker.atk_vars]
+                    # labels = labels[:, :self.attacker.pattern_len, self.attacker.atk_vars]      # 只看pattern_len和atk_vars的情况
+                    # outputs = outputs[:, :self.attacker.pattern_len, self.attacker.atk_vars]
                     atk_targets.append(labels.cpu().detach().numpy())
                     atk_preds.append(outputs.cpu().detach().numpy())
 
@@ -172,10 +182,28 @@ class Trainer:
                 atk_targets = np.concatenate(atk_targets, axis=0)
                 atk_mae = mean_absolute_error(atk_targets.reshape(-1, 1), atk_preds.reshape(-1, 1))
                 atk_rmse = mean_squared_error(atk_targets.reshape(-1, 1), atk_preds.reshape(-1, 1)) ** 0.5
+                atk_mae_attV = mean_absolute_error(
+                    atk_targets[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1),
+                    atk_preds[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1))
+                atk_rmse_attV = mean_squared_error(
+                    atk_targets[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1),
+                    atk_preds[:, :self.attacker.pattern_len, self.attacker.atk_vars].reshape(-1, 1)) ** 0.5
 
-                atk_info = f' | attacked MAE: {atk_mae}, attacked RMSE: {atk_rmse}'
+                atk_info = f' | attacked MAE: {atk_mae}, attacked RMSE: {atk_rmse}, \n' \
+                            f'attacked MAE (att_vars in pat_len): {atk_mae_attV}, attacked RMSE (att_vars in pat_len): {atk_rmse_attV}'
 
-        info = 'Epoch: {}'.format(epoch) + cln_info + atk_info
+        log1 = {"Epoch": epoch, "Tag": "Clean", "MAE": cln_mae, "RMSE": cln_rmse,
+                "MAE (attacked vars in pattern len)": cln_mae_attV,
+                "RMSE (attacked vars in pattern len)": cln_rmse_attV
+        }
+        log2 = {"Epoch": epoch, "Tag": "Attacked", "MAE": atk_mae, "RMSE": atk_rmse,
+                "MAE (attacked vars in pattern len)": atk_mae_attV,
+                "RMSE (attacked vars in pattern len)": atk_rmse_attV
+        }
+        self.logs.append(log1)
+        self.logs.append(log2)
+
+        info = 'Epoch: {}'.format(epoch) + '\n' + cln_info + '\n' + atk_info
         print(info)
 
     def test(self):
@@ -208,4 +236,11 @@ class Trainer:
                 loss.backward()
                 optimizer.step()
 
-            self.validate(model, epoch, 0)
+            self.validate(model, epoch)
+
+        # save logs
+        logs_df = pd.DataFrame(self.logs)
+        if not os.path.exists('./logs'):
+            os.makedirs('./logs')
+        logs_df.to_csv(f'./logs/logs_{self.config.dataset}.csv', index=False)
+
