@@ -166,7 +166,7 @@ class Attacker:
         pattern_len = self.target_pattern.shape[-1]
 
         for beg_idx in self.atk_ts.tolist():
-            data_bef_tgr = self.dataset.data[:, 0:1, beg_idx - self.trigger_generator.input_dim:beg_idx]    # bef_tgr 考虑全特征
+            data_bef_tgr = self.dataset.data[self.atk_vars, 0:1, beg_idx - self.trigger_generator.input_dim:beg_idx]
             data_bef_tgr = self.dataset.normalize(data_bef_tgr)
             data_bef_tgr = data_bef_tgr.reshape(-1, self.trigger_generator.input_dim)
 
@@ -258,7 +258,7 @@ class Attacker:
             slice = slice.to(self.device)
             slice = slice[:, 0:1, :]
             n, c, l = slice.shape
-            data_bef = slice[:, :,
+            data_bef = slice[self.atk_vars, :,
                        self.fct_input_len - self.trigger_len - self.bef_tgr_len:self.fct_input_len - self.trigger_len]
             data_bef = data_bef.reshape(-1, self.bef_tgr_len)
 

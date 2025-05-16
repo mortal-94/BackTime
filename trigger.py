@@ -50,8 +50,8 @@ class TgrGCN(nn.Module):
         self.conv1 = GraphConvolutionLayer(self.input_dim, self.hidden_dim)
         self.conv2 = GraphConvolutionLayer(self.hidden_dim, self.output_dim)
         # bef_tgr是全特征后，生成器考虑特征相关生成atk_vars的trigger
-        # self.sim_feats = torch.from_numpy(sim_feats).float().to(device)[atk_vars]  # (n, c)
-        self.sim_feats = torch.from_numpy(sim_feats).float().to(device)  # (n, c)
+        self.sim_feats = torch.from_numpy(sim_feats).float().to(device)[atk_vars]  # (n, c)
+        # self.sim_feats = torch.from_numpy(sim_feats).float().to(device)  # (n, c)
 
         self.device = device
         self.layer_num = 2
@@ -81,7 +81,7 @@ class TgrGCN(nn.Module):
         A = A.to(self.device)
         h = self.conv1(x, A)
         h = F.relu(h)
-        A = A[self.atk_vars][:]
+        # A = A[self.atk_vars][:]
         perturb = self.conv2(h, A)
 
         perturb = torch.tanh(perturb) * self.init_bound * (1 - constant_alpha)
