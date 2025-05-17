@@ -122,7 +122,7 @@ class Trainer:
 
             self.validate(self.net, epoch, self.warmup)
 
-    def validate(self, model, epoch, atk_eval_epoch=-1):
+    def validate(self, model, epoch, atk_eval_epoch=0):
         model.eval()
         self.attacker.eval()
         cln_info = atk_info = ''

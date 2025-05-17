@@ -141,7 +141,7 @@ class AttackEvaluateSet(TimeDataset):
         features = self.denormalize(features)
 
         data_bef = features[:, self.attacker.atk_vars, 0,
-                   -self.attacker.trigger_len - self.attacker.bef_tgr_len:-self.attacker.trigger_len]  # bef全特征输入
+                   -self.attacker.trigger_len - self.attacker.bef_tgr_len:-self.attacker.trigger_len]
         triggers = self.attacker.predict_trigger(data_bef)[0]
         triggers = triggers.reshape(-1, self.attacker.atk_vars.shape[0], 1, self.attacker.trigger_len)
         features[:, self.attacker.atk_vars, :, -self.attacker.trigger_len:] = triggers

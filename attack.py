@@ -189,7 +189,7 @@ class Attacker:
         data_bef_trigger = self.dataset.normalize(data_bef_trigger)
         data_bef_trigger = data_bef_trigger.view(-1, self.trigger_generator.input_dim)
         triggers, perturbations = self.trigger_generator(data_bef_trigger)
-        triggers = self.dataset.denormalize(triggers).reshape(-1, self.atk_vars.shape[0], self.trigger_len)
+        triggers = self.dataset.denormalize(triggers).reshape(-1, c, self.trigger_len)
         return triggers, perturbations
 
     def get_trigger_slices(self, bef_len, aft_len):
@@ -214,7 +214,6 @@ class Attacker:
     def select_atk_timestamp(self, poison_metrics):
         """
         select the attack timestamp using the poison metrics (clean MAE). poison_metrics: a list of [mae, idx]
-        。。。有误，实际这个函数运行时接受的参数不是 poison的，而是正常数据集的。
         """
         select_pos_mark = torch.zeros(len(self.dataset), dtype=torch.int)
         poison_metrics = torch.cat(poison_metrics, dim=0).to(self.device)
@@ -252,7 +251,7 @@ class Attacker:
                                                  self.trigger_len + self.pattern_len + self.fct_output_len)
         else:
             tgr_slices, tgr_timestamps = self.get_trigger_slices(self.fct_input_len - self.trigger_len,
-                                                                 self.trigger_len + self.pattern_len + self.fct_output_len)
+                                                             self.trigger_len + self.pattern_len + self.fct_output_len)
         pbar = tqdm.tqdm(tgr_slices, desc=f'Attacking data {epoch}/{epochs}')
         for slice_id, slice in enumerate(pbar):
             slice = slice.to(self.device)
