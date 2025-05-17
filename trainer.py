@@ -225,7 +225,8 @@ class Trainer:
         model = MODEL_MAP[self.config.model_name](self.config.Model).to(self.device)
         optimizer = optim.Adam(model.parameters(), lr=self.config.learning_rate)
 
-        self.attacker.sparse_inject()
+        # self.attacker.sparse_inject()
+        print('start training a new model on the clean data')
         self.train_set = self.attacker.dataset
         self.train_loader = DataLoader(self.train_set, batch_size=self.batch_size, shuffle=True)
         for epoch in range(self.num_epochs):

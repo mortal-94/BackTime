@@ -69,6 +69,7 @@ def main(config):
     atk_vars = np.arange(train_data_seq.shape[1])
     atk_vars = np.random.choice(atk_vars, size=spatial_poison_num, replace=False)
     atk_vars = torch.from_numpy(atk_vars).long().to(DEVICE)
+    print(atk_vars)
     print('shape of attacked_variables', atk_vars.shape)
 
     # load target pattern
