@@ -8,6 +8,7 @@ import pandas as pd
 from math import ceil
 import tqdm
 from trigger import TgrGCN
+from trigger import TgrGen
 
 
 def fft_compress(raw_data_seq, n_components=200):
@@ -47,7 +48,10 @@ class Attacker:
         self.target_pattern = target_pattern
         self.atk_vars = atk_vars
 
-        self.trigger_generator = TgrGCN(config, sim_feats=channel_features, atk_vars=atk_vars, device=device)
+        # self.trigger_generator = TgrGCN(config, sim_feats=channel_features, atk_vars=atk_vars, device=device)
+        # trigger生成器换成插补任务的模型
+        self.trigger_generator = TgrGen(config, sim_feats=channel_features, atk_vars=atk_vars, device=device)
+
         self.trigger_len = config.trigger_len
         self.pattern_len = config.pattern_len
         self.bef_tgr_len = config.bef_tgr_len  # the length of the data before the trigger to generate the trigger
@@ -141,6 +145,7 @@ class Attacker:
 
         n, c, T = self.dataset.data.shape
         for beg_idx in self.atk_ts.tolist():
+            # todo trigger生成器换成插补任务的模型
             data_bef_tgr = self.dataset.data[..., beg_idx - self.trigger_generator.input_dim:beg_idx]
             data_bef_tgr = self.dataset.normalize(data_bef_tgr)
             data_bef_tgr = data_bef_tgr.view(-1, self.trigger_generator.input_dim)
@@ -166,30 +171,35 @@ class Attacker:
         pattern_len = self.target_pattern.shape[-1]
 
         for beg_idx in self.atk_ts.tolist():
-            data_bef_tgr = self.dataset.data[self.atk_vars, 0:1, beg_idx - self.trigger_generator.input_dim:beg_idx]
-            data_bef_tgr = self.dataset.normalize(data_bef_tgr)
-            data_bef_tgr = data_bef_tgr.reshape(-1, self.trigger_generator.input_dim)
-
-            triggers = self.trigger_generator(data_bef_tgr)[0]
-            triggers = self.dataset.denormalize(triggers).reshape(n, 1, -1)
-
-            # inject the trigger and target pattern
-            self.dataset.poisoned_data[self.atk_vars, 0:1, beg_idx:beg_idx + trigger_len] = triggers.detach()
             self.dataset.poisoned_data[self.atk_vars, 0:1, beg_idx + trigger_len:beg_idx + trigger_len + pattern_len] = \
                 self.target_pattern + self.dataset.poisoned_data[self.atk_vars, 0:1, beg_idx - 1:beg_idx]
 
-    def predict_trigger(self, data_bef_trigger):
+            # trigger生成器换成插补任务的模型
+            encoder_inputs = self.dataset.poisoned_data[:, 0:1, beg_idx - self.bef_tgr_len:beg_idx + trigger_len + pattern_len]  # (n,c,t)
+
+            encoder_inputs = self.dataset.normalize(encoder_inputs)
+            encoder_inputs = encoder_inputs.reshape(-1, self.trigger_generator.input_dim)
+
+            triggers = self.trigger_generator(encoder_inputs)[0]
+            triggers = self.dataset.denormalize(triggers).reshape(n, 1, -1)  # (n,c,t)
+
+            # inject the trigger and target pattern
+            self.dataset.poisoned_data[self.atk_vars, 0:1, beg_idx:beg_idx + trigger_len] = triggers.detach()
+
+
+    def predict_trigger(self, encoder_inputs):
         """
         predict the trigger using the trigger generator.
-        n = number of samples, c = number of variables, l = length of the data
-        :param data_bef_trigger: the data before the trigger, shape: (n, c, l).
+        b = number of samples, n = number of variables, t = length of the data
+        :param encoder_inputs: the data before the trigger + trigger + trigger pattern, shape: (b, n, t).
         :return: the predicted trigger, shape: (n, c, trigger_len)
         """
-        c, l = data_bef_trigger.shape[-2:]
-        data_bef_trigger = self.dataset.normalize(data_bef_trigger)
-        data_bef_trigger = data_bef_trigger.view(-1, self.trigger_generator.input_dim)
-        triggers, perturbations = self.trigger_generator(data_bef_trigger)
-        triggers = self.dataset.denormalize(triggers).reshape(-1, c, self.trigger_len)
+        # trigger生成器换成插补任务的模型
+        # c, l = encoder_inputs.shape[-2:]
+        encoder_inputs = self.dataset.normalize(encoder_inputs)
+        encoder_inputs = encoder_inputs.view(-1, self.trigger_generator.input_dim)
+        triggers, perturbations = self.trigger_generator(encoder_inputs)
+        triggers = self.dataset.denormalize(triggers).reshape(-1, len(self.atk_vars), self.trigger_len)
         return triggers, perturbations
 
     def get_trigger_slices(self, bef_len, aft_len):
@@ -257,19 +267,23 @@ class Attacker:
             slice = slice.to(self.device)
             slice = slice[:, 0:1, :]
             n, c, l = slice.shape
-            data_bef = slice[self.atk_vars, :,
-                       self.fct_input_len - self.trigger_len - self.bef_tgr_len:self.fct_input_len - self.trigger_len]
-            data_bef = data_bef.reshape(-1, self.bef_tgr_len)
+            # data_bef = slice[self.atk_vars, :,
+            #            self.fct_input_len - self.trigger_len - self.bef_tgr_len:self.fct_input_len - self.trigger_len]
+            # data_bef = data_bef.reshape(-1, self.bef_tgr_len)
 
-            triggers, perturbations = self.predict_trigger(data_bef)
+            # add the pattern to the slice. x[t:t+ptn_len] = x[t-1-trigger_len] + target_pattern
+            slice[self.atk_vars, :, self.fct_input_len:self.fct_input_len + self.pattern_len] = \
+                self.target_pattern + slice[self.atk_vars, :, self.fct_input_len - self.trigger_len - 1].unsqueeze(-1)
+
+            encoder_inputs = slice[:, :, self.fct_input_len - self.trigger_len - self.bef_tgr_len:self.fct_input_len + self.pattern_len]
+            encoder_inputs = encoder_inputs.reshape(-1, self.trigger_generator.input_dim)
+            triggers, perturbations = self.predict_trigger(encoder_inputs)
 
             # add the trigger to the slice. x[t-trigger_len:x] = trigger
             triggers = triggers.reshape(self.atk_vars.shape[0], -1, self.trigger_len)
             slice[self.atk_vars, :, self.fct_input_len - self.trigger_len:self.fct_input_len] = triggers
 
-            # add the pattern to the slice. x[t:t+ptn_len] = x[t-1-trigger_len] + target_pattern
-            slice[self.atk_vars, :, self.fct_input_len:self.fct_input_len + self.pattern_len] = \
-                self.target_pattern + slice[self.atk_vars, :, self.fct_input_len - self.trigger_len - 1].unsqueeze(-1)
+
 
             # mimic the soft identification, i.e., the input and output only contain a part of the trigger and pattern
             batch_inputs_bkd = [slice[..., i:i + self.fct_input_len] for i in range(self.pattern_len)]
@@ -308,7 +322,7 @@ class Attacker:
                                   reduction='none')
             loss_bkd = torch.mean(loss_bkd, dim=(1, 2))
             loss_bkd = torch.sum(loss_bkd * loss_decay)  # reweight the loss
-            loss_norm = torch.abs(torch.sum(perturbations, dim=1)).mean()
+            loss_norm = torch.abs(torch.sum(perturbations, dim=2)).mean()
             loss = loss_bkd + self.lam_norm * loss_norm
 
             loss.backward()

@@ -40,6 +40,14 @@ def parser_args():
     config['Surrogate']['enc_in'] = config['Dataset']['num_of_vertices']
     config['Surrogate']['dec_in'] = config['Dataset']['num_of_vertices']
 
+    config['Model_impu'] = default_config['Model_impu'][config['model_impu_name']]
+    config['Model_impu']['c_out'] = config['Dataset']['num_of_vertices']
+    config['Model_impu']['enc_in'] = config['Dataset']['num_of_vertices']
+    config['Model_impu']['dec_in'] = config['Dataset']['num_of_vertices']
+    config['Model_impu']['seq_len'] = config['trigger_len'] + config['bef_tgr_len'] + config['pattern_len']
+    config['Model_impu']['label_len'] = 0
+    config['Model_impu']['pred_len'] = 0
+
     config = edict(config)
     return config
 
@@ -70,6 +78,7 @@ def main(config):
     atk_vars = np.random.choice(atk_vars, size=spatial_poison_num, replace=False)
     atk_vars = torch.from_numpy(atk_vars).long().to(DEVICE)
     print('shape of attacked_variables', atk_vars.shape)
+    print(atk_vars)
 
     # load target pattern
     target_pattern = config.Target_Pattern

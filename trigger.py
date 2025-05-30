@@ -6,7 +6,40 @@ import torch.nn.functional as F
 import tqdm
 # from dgl.nn.pytorch import GraphConv
 # import dgl
+from forecast_models import TimesNet, Autoformer, FEDformer
 
+MODEL_MAP = {
+    'TimesNet': TimesNet,
+    'Autoformer': Autoformer,
+    'FEDformer': FEDformer
+}
+class TgrGen(nn.Module):
+    def __init__(self, config, sim_feats, atk_vars, device='cuda'):
+        super(TgrGen, self).__init__()
+        self.config = config
+        self.input_dim = config.bef_tgr_len + config.trigger_len + config.pattern_len
+        self.output_dim = config.trigger_len
+        self.atk_vars = atk_vars
+        self.device = device
+
+        self.net = MODEL_MAP[config.model_impu_name](config.Model_impu).to(device)
+
+    def forward(self, x):
+        """
+        x: the normalized input of the MLP, shape: (batch_size * n, input_dim)
+        """
+        n = self.config.Dataset.num_of_vertices     # full feature
+        assert x.shape[0] % n == 0, 'the batch graph size should be a multiple of the number of variables.'
+        x = x.reshape(-1, self.input_dim, n)  # (b, t, n)
+
+        x_mark = torch.zeros(x.shape[0], x.shape[1], 4).to(self.device)
+        mask = torch.ones_like(x).to(self.device)
+        mask[:, self.config.bef_tgr_len:self.config.bef_tgr_len+self.config.trigger_len, self.atk_vars] = 0  # mask the trigger part
+
+        out = self.net(x, x_mark, None, None, mask)
+        out = out[:, self.config.bef_tgr_len:self.config.bef_tgr_len+self.config.trigger_len, self.atk_vars]
+        perturb = x[:, self.config.bef_tgr_len:self.config.bef_tgr_len+self.config.trigger_len, self.atk_vars] - out
+        return out, perturb
 
 class GraphConvolutionLayer(nn.Module):
     def __init__(self, in_features, out_features):

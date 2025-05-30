@@ -7,6 +7,7 @@ Train:
     gpuid: '0'
     surrogate_name: FEDformer
     model_name: FEDformer
+    model_impu_name: TimesNet
     dataset: PEMS03
     pattern_type: cone
     trigger_len: 4

@@ -56,6 +56,21 @@ Model:
         activation: gelu
         moving_avg: 25
 
+Model_impu:
+    TimesNet:
+        task_name: imputation
+        e_layers: 2
+        embed: timeF
+        freq: h
+        dropout: 0.1
+        top_k: 5
+        d_model: 128
+        d_ff: 128
+        factor: 3
+        num_kernels: 3
+        output_attention: 0
+        distil: 1
+
 Dataset:
     PEMS03:
         data_filename: ./data/PEMS03/PEMS03.npz

@@ -128,6 +128,7 @@ class AttackEvaluateSet(TimeDataset):
         :param data: the input data
         :return: the attacked data by the attacker
         """
+        #  trigger生成器换成插补任务的模型
         if self.use_timestamp:
             features, target, clean_target, input_stamps, target_stamps, idx = zip(*data)
             input_stamps = torch.stack(input_stamps, dim=0)
@@ -140,15 +141,20 @@ class AttackEvaluateSet(TimeDataset):
 
         features = self.denormalize(features)
 
-        data_bef = features[:, self.attacker.atk_vars, 0,
-                   -self.attacker.trigger_len - self.attacker.bef_tgr_len:-self.attacker.trigger_len]
-        triggers = self.attacker.predict_trigger(data_bef)[0]
-        triggers = triggers.reshape(-1, self.attacker.atk_vars.shape[0], 1, self.attacker.trigger_len)
-        features[:, self.attacker.atk_vars, :, -self.attacker.trigger_len:] = triggers
-
+        # data_bef = features[:, self.attacker.atk_vars, 0,
+        #            -self.attacker.trigger_len - self.attacker.bef_tgr_len:-self.attacker.trigger_len]
         target = clean_target.clone().detach().to(self.device)
         target[:, self.attacker.atk_vars, :self.attacker.pattern_len] = \
             self.attacker.target_pattern + features[:, self.attacker.atk_vars, :, -self.attacker.trigger_len - 1]
+
+        encoder_inputs = features[:, :, 0, -self.attacker.trigger_len - self.attacker.bef_tgr_len:]
+        # 拼接target部分
+        encoder_inputs = torch.cat(
+            [encoder_inputs, target[:, :, :self.attacker.pattern_len]], dim=-1)
+        triggers = self.attacker.predict_trigger(encoder_inputs)[0]
+        triggers = triggers.reshape(-1, self.attacker.atk_vars.shape[0], 1, self.attacker.trigger_len)
+        features[:, self.attacker.atk_vars, :, -self.attacker.trigger_len:] = triggers
+
 
         features = self.normalize(features)
         if not self.use_timestamp:
