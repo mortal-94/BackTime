@@ -118,7 +118,7 @@ class Trainer:
                 self.optimizer.step()
 
                 # 更新插补器
-                if epoch <= self.warmup:
+                if epoch <= self.num_epochs // 2:
                     self.attacker.attack_optim.zero_grad()
                     impu_inputs = torch.cat([encoder_inputs.detach(), self.train_set.normalize(labels)], dim=1)[:, self.config.Surrogate.seq_len - self.attacker.bef_tgr_len - self.attacker.trigger_len:
                                   self.config.Surrogate.seq_len + self.attacker.pattern_len, :]
