@@ -21,6 +21,7 @@ class TgrGen(nn.Module):
         self.output_dim = config.trigger_len
         self.atk_vars = atk_vars
         self.device = device
+        self.trigger_idx = slice(config.Surrogate.seq_len - config.trigger_len, config.Surrogate.seq_len)
 
         self.net = MODEL_MAP[config.model_impu_name](config.Model_impu).to(device)
 
@@ -34,11 +35,11 @@ class TgrGen(nn.Module):
 
         x_mark = torch.zeros(x.shape[0], x.shape[1], 4).to(self.device)
         mask = torch.ones_like(x).to(self.device)
-        mask[:, self.config.bef_tgr_len:self.config.bef_tgr_len+self.config.trigger_len, self.atk_vars] = 0  # mask the trigger part
+        mask[:, self.trigger_idx, self.atk_vars] = 0  # mask the trigger part
 
         out = self.net(x, x_mark, None, None, mask)
-        out = out[:, self.config.bef_tgr_len:self.config.bef_tgr_len+self.config.trigger_len, self.atk_vars]
-        perturb = x[:, self.config.bef_tgr_len:self.config.bef_tgr_len+self.config.trigger_len, self.atk_vars] - out
+        out = out[:, self.trigger_idx, self.atk_vars]
+        perturb = x[:, self.trigger_idx, self.atk_vars] - out
         return out, perturb
 
 class GraphConvolutionLayer(nn.Module):

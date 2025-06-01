@@ -47,7 +47,7 @@ class Trainer:
         self.train_data_stamps = train_data_stamps
         self.test_data_stamps = test_data_stamps
 
-        train_set = TimeDataset(train_data, train_mean, train_std, device, num_for_hist=12, num_for_futr=12, timestamps=train_data_stamps)  # 前12，后12写死在这里了
+        train_set = TimeDataset(train_data, train_mean, train_std, device, num_for_hist=self.config.Surrogate.seq_len, num_for_futr=self.config.Surrogate.pred_len, timestamps=train_data_stamps)  # 前12，后12写死在这里了
         channel_features = fft_compress(train_data, 200)
         self.attacker = Attacker(train_set, channel_features, atk_vars, config, target_pattern, device)
         self.use_timestamps = config.Dataset.use_timestamps
