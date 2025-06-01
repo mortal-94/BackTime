@@ -120,7 +120,7 @@ class Trainer:
                 # 更新插补器
                 if epoch <= self.warmup:
                     self.attacker.attack_optim.zero_grad()
-                    impu_inputs = torch.cat([encoder_inputs, self.train_set.normalize(labels)], dim=1)[:, self.config.Surrogate.seq_len - self.attacker.bef_tgr_len - self.attacker.trigger_len:
+                    impu_inputs = torch.cat([encoder_inputs.detach(), self.train_set.normalize(labels)], dim=1)[:, self.config.Surrogate.seq_len - self.attacker.bef_tgr_len - self.attacker.trigger_len:
                                   self.config.Surrogate.seq_len + self.attacker.pattern_len, :]
                     impu_inputs = impu_inputs.reshape(-1, self.attacker.trigger_generator.input_dim)
                     impu_out = self.attacker.trigger_generator(impu_inputs)[0]
